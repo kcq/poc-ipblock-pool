@@ -1,26 +1,26 @@
 package pool
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"time"
-	"errors"
-	"bytes"
-	"math/big"
-	"encoding/json"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/segmentio/ksuid"
 )
 
 const (
-	poolInfoKey = "poc/pool/info"
-	poolLockKey = "poc/pool/.lock"
+	poolInfoKey         = "poc/pool/info"
+	poolLockKey         = "poc/pool/.lock"
 	poolBlocksKeyPrefix = "poc/pool/blocks"
-	baseSubnet = "169.254.0.0/16"
-	startRange = "169.254.51.0"
-	endRange = "169.254.255.244"
-	poolBlockSize = 4
+	baseSubnet          = "169.254.0.0/16"
+	startRange          = "169.254.51.0"
+	endRange            = "169.254.255.244"
+	poolBlockSize       = 4
 )
 
 var (
@@ -36,8 +36,8 @@ type PoolInfo struct {
 func NewPoolInfo(start, end, next string) *PoolInfo {
 	info := PoolInfo{
 		Start: start,
-		End: end,
-		Next: next,
+		End:   end,
+		Next:  next,
 	}
 
 	return &info
@@ -56,9 +56,9 @@ func NewBlockInfo(start, key string) *BlockInfo {
 	}
 
 	info := BlockInfo{
-		ID: id.String(),
+		ID:    id.String(),
 		Start: start,
-		Key: key,
+		Key:   key,
 	}
 
 	return &info
@@ -73,7 +73,7 @@ type Manager struct {
 }
 
 func New() *Manager {
-	pool := Manager {
+	pool := Manager{
 		store: NewStore(),
 	}
 
@@ -83,11 +83,11 @@ func New() *Manager {
 
 func (pool *Manager) init() {
 	fmt.Println("Pool.init: trying to get the pool lock...")
-	
+
 	lock := pool.store.GetLock()
 	lockCh, err := lock.Lock(nil)
 	if err != nil {
-			panic(err)
+		panic(err)
 	}
 	if lockCh == nil {
 		panic("did not lock")
@@ -100,29 +100,29 @@ func (pool *Manager) init() {
 	if pool.info == nil {
 		fmt.Println("PoolInfo - not initialized yet...")
 
-		pool.info = NewPoolInfo(startRange,endRange,startRange)
+		pool.info = NewPoolInfo(startRange, endRange, startRange)
 		pool.store.SavePool(pool.info)
 
-		pool.startIP   = net.ParseIP(startRange)
-		pool.endIP     = net.ParseIP(endRange)
+		pool.startIP = net.ParseIP(startRange)
+		pool.endIP = net.ParseIP(endRange)
 		pool.nextBlock = pool.startIP
 
 	} else {
-		fmt.Printf("PoolInfo - restored => %#v\n",pool.info)
-		pool.startIP   = net.ParseIP(pool.info.Start)
-		pool.endIP     = net.ParseIP(pool.info.End)
+		fmt.Printf("PoolInfo - restored => %#v\n", pool.info)
+		pool.startIP = net.ParseIP(pool.info.Start)
+		pool.endIP = net.ParseIP(pool.info.End)
 		pool.nextBlock = net.ParseIP(pool.info.Next)
 	}
 }
 
 func (pool *Manager) nextBlockFromRange() string {
-	fmt.Printf("nextBlockFromRange - pool.nextBlock => %#v\n",pool.nextBlock)
+	fmt.Printf("nextBlockFromRange - pool.nextBlock => %#v\n", pool.nextBlock)
 	//NOTE: nextBlock needs to be fresh when nextBlockFromRange is called
 	allocated := pool.nextBlock.String()
 
 	if ipVal := pool.nextBlock.To4(); ipVal != nil {
 		ipNum := big.NewInt(0).SetBytes(ipVal)
-		pool.nextBlock = net.IP(ipNum.Add(ipNum,big.NewInt(poolBlockSize)).Bytes())
+		pool.nextBlock = net.IP(ipNum.Add(ipNum, big.NewInt(poolBlockSize)).Bytes())
 
 		//NOTE: info needs to be fresh when nextBlockFromRange is called
 		pool.info.Next = pool.nextBlock.String()
@@ -132,7 +132,7 @@ func (pool *Manager) nextBlockFromRange() string {
 
 	} else {
 		panic("nextBlockFromRange - unexpected IP value")
-	}	
+	}
 
 	return allocated
 }
@@ -153,16 +153,16 @@ func (pool *Manager) Allocate(blockKey string, delayUnlock bool) *BlockInfo {
 	lock := pool.store.GetLock()
 	lockCh, err := lock.Lock(nil)
 	if err != nil {
-			panic(err)
+		panic(err)
 	}
 	if lockCh == nil {
 		panic("did not lock")
 	}
-	
+
 	if !delayUnlock {
 		defer lock.Unlock()
 	}
-	
+
 	fmt.Println("Pool.Allocate - Got the pool lock...")
 
 	if blockKey != "" {
@@ -174,7 +174,7 @@ func (pool *Manager) Allocate(blockKey string, delayUnlock bool) *BlockInfo {
 
 	//TODO - refresh pool info here
 	blockStart := pool.nextBlockFromRange()
-	fmt.Println("Pool.Allocate - Allocated IP block =>",blockStart)
+	fmt.Println("Pool.Allocate - Allocated IP block =>", blockStart)
 
 	blockInfo := NewBlockInfo(blockStart, blockKey)
 	pool.store.SaveBlock(blockInfo)
@@ -196,7 +196,7 @@ func (pool *Manager) Free(ipBlock, blockKey string) error {
 	lock := pool.store.GetLock()
 	lockCh, err := lock.Lock(nil)
 	if err != nil {
-			panic(err)
+		panic(err)
 	}
 	if lockCh == nil {
 		panic("did not lock")
@@ -210,7 +210,7 @@ func (pool *Manager) Free(ipBlock, blockKey string) error {
 			fmt.Println("Pool.Free - Found record by IP")
 			pool.store.RemoveBlock(ipBlock)
 			return nil
-		} 
+		}
 	} else if blockKey != "" {
 		if blockInfo := pool.store.FindBlock(blockKey); blockInfo != nil {
 			fmt.Println("Pool.Free - Found record by Key")
@@ -227,14 +227,13 @@ type Store struct {
 	kvAPI  *api.KV
 }
 
-
 func (s *Store) GetLock() *api.Lock {
 	lock, err := s.consul.LockKey(poolLockKey)
 	if err != nil {
-			panic(err)
+		panic(err)
 	}
 
-	return lock	
+	return lock
 }
 
 func (s *Store) GetRecord(key string) []byte {
@@ -272,12 +271,12 @@ func (s *Store) FindBlock(key string) *BlockInfo {
 	} else {
 		for _, p := range pairs {
 			var record map[string]string
-			if err := json.Unmarshal(p.Value,&record); err != nil {
+			if err := json.Unmarshal(p.Value, &record); err != nil {
 				panic(err)
 			}
 
 			var block BlockInfo
-			if err := json.Unmarshal(p.Value,&block); err != nil {
+			if err := json.Unmarshal(p.Value, &block); err != nil {
 				panic(err)
 			}
 
@@ -291,14 +290,14 @@ func (s *Store) FindBlock(key string) *BlockInfo {
 }
 
 func (s *Store) GetBlock(blockStart string) *BlockInfo {
-	key := fmt.Sprintf("%s/%s",poolBlocksKeyPrefix,blockStart)
+	key := fmt.Sprintf("%s/%s", poolBlocksKeyPrefix, blockStart)
 	raw := s.GetRecord(key)
 	if raw == nil {
 		return nil
 	}
 
 	var block BlockInfo
-	if err := json.Unmarshal(raw,&block); err != nil {
+	if err := json.Unmarshal(raw, &block); err != nil {
 		panic(err)
 	}
 
@@ -306,7 +305,7 @@ func (s *Store) GetBlock(blockStart string) *BlockInfo {
 }
 
 func (s *Store) SaveBlock(block *BlockInfo) {
-	key := fmt.Sprintf("%s/%s",poolBlocksKeyPrefix,block.Start)
+	key := fmt.Sprintf("%s/%s", poolBlocksKeyPrefix, block.Start)
 
 	buf := &bytes.Buffer{}
 	enc := json.NewEncoder(buf)
@@ -319,7 +318,7 @@ func (s *Store) SaveBlock(block *BlockInfo) {
 }
 
 func (s *Store) RemoveBlock(blockStart string) {
-	key := fmt.Sprintf("%s/%s",poolBlocksKeyPrefix,blockStart)
+	key := fmt.Sprintf("%s/%s", poolBlocksKeyPrefix, blockStart)
 	s.RemoveRecord(key)
 }
 
@@ -341,13 +340,13 @@ func (s *Store) GetPool() *PoolInfo {
 	}
 
 	var pool PoolInfo
-	if err := json.Unmarshal(raw,&pool); err != nil {
+	if err := json.Unmarshal(raw, &pool); err != nil {
 		panic(err)
 	}
 
 	return &pool
 }
-	
+
 func NewStore() *Store {
 	fmt.Println("NewStore...")
 	client, err := api.NewClient(api.DefaultConfig())
@@ -357,7 +356,7 @@ func NewStore() *Store {
 
 	store := Store{
 		consul: client,
-		kvAPI: client.KV(),
+		kvAPI:  client.KV(),
 	}
 
 	return &store

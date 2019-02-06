@@ -2,21 +2,21 @@ package server
 
 import (
 	"bytes"
-	"strings"
-	"net/http"
 	"encoding/json"
-	
+	"net/http"
+	"strings"
+
 	"github.com/go-chi/chi"
 
 	"github.com/kcq/poc-ipblock-pool/pkg/pool"
 )
 
 const (
-	serverAddr = ":5555"
-	paramDelay = "delay"
-	paramPretty = "pretty"
-	paramBlock = "block"
-	paramKey = "key"
+	serverAddr         = ":5555"
+	paramDelay         = "delay"
+	paramPretty        = "pretty"
+	paramBlock         = "block"
+	paramKey           = "key"
 	pathPoolAllocation = "/pool/allocation"
 )
 
@@ -53,12 +53,12 @@ func (a *App) init() {
 			key = r.URL.Query().Get(paramKey)
 		}
 
-		blockInfo := a.pm.Lookup(block,key)
+		blockInfo := a.pm.Lookup(block, key)
 
 		if blockInfo == nil {
-			reply(w, r,http.StatusNotFound)
+			reply(w, r, http.StatusNotFound)
 		} else {
-			replyJSON(w,r, blockInfo, http.StatusOK, pretty)
+			replyJSON(w, r, blockInfo, http.StatusOK, pretty)
 		}
 	})
 
@@ -78,9 +78,9 @@ func (a *App) init() {
 			key = r.URL.Query().Get(paramKey)
 		}
 
-		blockInfo := a.pm.Allocate(key,delayUnlock)
+		blockInfo := a.pm.Allocate(key, delayUnlock)
 
-		replyJSON(w,r, blockInfo, http.StatusOK, pretty)
+		replyJSON(w, r, blockInfo, http.StatusOK, pretty)
 
 	})
 
@@ -95,12 +95,15 @@ func (a *App) init() {
 			block = r.URL.Query().Get(paramBlock)
 		}
 
-		err := a.pm.Free(block,key)
+		err := a.pm.Free(block, key)
 
 		switch err {
-			case pool.ErrBlockNotFound: reply(w, r,http.StatusNotFound)
-			case nil: reply(w, r,http.StatusNoContent)
-			default: reply(w, r,http.StatusInternalServerError)
+		case pool.ErrBlockNotFound:
+			reply(w, r, http.StatusNotFound)
+		case nil:
+			reply(w, r, http.StatusNoContent)
+		default:
+			reply(w, r, http.StatusInternalServerError)
 		}
 	})
 }
@@ -108,20 +111,20 @@ func (a *App) init() {
 func (a *App) Run() {
 	if err := http.ListenAndServe(serverAddr, a.router); err != nil {
 		panic(err)
-	}	
+	}
 }
 
-func replyJSON(w http.ResponseWriter, 
-			   r *http.Request, 
-			   value interface{}, 
-			   status int, 
-			   pretty bool) {
+func replyJSON(w http.ResponseWriter,
+	r *http.Request,
+	value interface{},
+	status int,
+	pretty bool) {
 	buf := &bytes.Buffer{}
 	enc := json.NewEncoder(buf)
 	enc.SetEscapeHTML(false)
 
 	if pretty {
-		enc.SetIndent("","  ")
+		enc.SetIndent("", "  ")
 	}
 
 	if err := enc.Encode(value); err != nil {
@@ -139,4 +142,3 @@ func replyJSON(w http.ResponseWriter,
 func reply(w http.ResponseWriter, r *http.Request, status int) {
 	w.WriteHeader(status)
 }
-
