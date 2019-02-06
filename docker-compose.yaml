@@ -5,3 +5,7 @@ services:
     command: agent -dev -ui -client 0.0.0.0
     ports:
       - "8500:8500"
+  service:
+    image: poc/ipblock-pool
+    depends_on:
+      - consul
