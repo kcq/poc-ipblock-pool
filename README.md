@@ -1,0 +1,3 @@
+# PoC - IP Block Allocator with Consul
+
+Allocates /30 (4 address) blocks...
