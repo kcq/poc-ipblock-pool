@@ -21,4 +21,13 @@ fmt:
 consul_run:
 	docker run -it --rm --name="consul_only" -p 8500:8500 consul:1.4.2 agent -dev -ui -client 0.0.0.0
 
-.PHONY: default build_container build_with_local_gopath build clean fmt consul_run
+up:
+	docker-compose up -d
+
+down:
+	docker-compose down
+
+tail:
+	docker-compose logs -f
+
+.PHONY: default build_container build_with_local_gopath build clean fmt consul_run up down

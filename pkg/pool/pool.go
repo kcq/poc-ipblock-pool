@@ -14,18 +14,31 @@ import (
 )
 
 const (
-	poolInfoKey         = "poc/pool/info"
-	poolLockKey         = "poc/pool/.lock"
-	poolBlocksKeyPrefix = "poc/pool/blocks"
-	baseSubnet          = "169.254.0.0/16"
-	startRange          = "169.254.51.0"
-	endRange            = "169.254.255.244"
-	poolBlockSize       = 4
+	poolInfoKey          = "poc/pool/info"
+	poolLockKey          = "poc/pool/.lock"
+	poolBlocksKeyPrefix  = "poc/pool/blocks"
+	defaultBaseSubnet    = "169.254.0.0/16"
+	defaultStartRange    = "169.254.51.0"
+	defaultEndRange      = "169.254.255.244"
+	defaultPoolBlockSize = 4
 )
 
 var (
 	ErrBlockNotFound = errors.New("Block not found")
 )
+
+type StoreConfig struct {
+	Address    string
+	Scheme     string
+	Datacenter string
+}
+
+type Config struct {
+	StartRange    string
+	EndRange      string
+	PoolBlockSize int64
+	Store         *StoreConfig
+}
 
 type PoolInfo struct {
 	Start string `json:"start"`
@@ -65,17 +78,47 @@ func NewBlockInfo(start, key string) *BlockInfo {
 }
 
 type Manager struct {
-	store     *Store
-	info      *PoolInfo
-	startIP   net.IP
-	endIP     net.IP
-	nextBlock net.IP
+	store         *Store
+	info          *PoolInfo
+	startIP       net.IP
+	endIP         net.IP
+	nextBlock     net.IP
+	poolBlockSize int64
+	startRange    string
+	endRange      string
 }
 
-func New() *Manager {
-	pool := Manager{
-		store: NewStore(),
+func New(configInfo *Config, store *Store) *Manager {
+	if store == nil && configInfo != nil && configInfo.Store != nil {
+		store = NewStoreWithConfig(configInfo.Store)
 	}
+
+	if store == nil {
+		fmt.Println("pool.New: using the default Store...")
+		store = NewStore(nil)
+	}
+	pool := Manager{
+		store:         store,
+		poolBlockSize: defaultPoolBlockSize,
+		startRange:    defaultStartRange,
+		endRange:      defaultEndRange,
+	}
+
+	if configInfo != nil {
+		if configInfo.StartRange != "" {
+			pool.startRange = configInfo.StartRange
+		}
+
+		if configInfo.EndRange == "" {
+			pool.endRange = configInfo.EndRange
+		}
+
+		if configInfo.PoolBlockSize == 0 {
+			pool.poolBlockSize = configInfo.PoolBlockSize
+		}
+	}
+
+	fmt.Printf("pool.New: manager => %+v\n", pool)
 
 	pool.init()
 	return &pool
@@ -100,11 +143,11 @@ func (pool *Manager) init() {
 	if pool.info == nil {
 		fmt.Println("PoolInfo - not initialized yet...")
 
-		pool.info = NewPoolInfo(startRange, endRange, startRange)
+		pool.info = NewPoolInfo(pool.startRange, pool.endRange, pool.startRange)
 		pool.store.SavePool(pool.info)
 
-		pool.startIP = net.ParseIP(startRange)
-		pool.endIP = net.ParseIP(endRange)
+		pool.startIP = net.ParseIP(pool.startRange)
+		pool.endIP = net.ParseIP(pool.endRange)
 		pool.nextBlock = pool.startIP
 
 	} else {
@@ -122,7 +165,7 @@ func (pool *Manager) nextBlockFromRange() string {
 
 	if ipVal := pool.nextBlock.To4(); ipVal != nil {
 		ipNum := big.NewInt(0).SetBytes(ipVal)
-		pool.nextBlock = net.IP(ipNum.Add(ipNum, big.NewInt(poolBlockSize)).Bytes())
+		pool.nextBlock = net.IP(ipNum.Add(ipNum, big.NewInt(pool.poolBlockSize)).Bytes())
 
 		//NOTE: info needs to be fresh when nextBlockFromRange is called
 		pool.info.Next = pool.nextBlock.String()
@@ -347,9 +390,14 @@ func (s *Store) GetPool() *PoolInfo {
 	return &pool
 }
 
-func NewStore() *Store {
-	fmt.Println("NewStore...")
-	client, err := api.NewClient(api.DefaultConfig())
+func NewStore(config *api.Config) *Store {
+	fmt.Println("pool.NewStore...")
+	if config == nil {
+		fmt.Println("pool.NewStore: using the default Consul config...")
+		config = api.DefaultConfig()
+	}
+
+	client, err := api.NewClient(config)
 	if err != nil {
 		panic(err)
 	}
@@ -360,4 +408,24 @@ func NewStore() *Store {
 	}
 
 	return &store
+}
+
+func NewStoreWithConfig(configInfo *StoreConfig) *Store {
+	config := api.DefaultConfig()
+
+	if configInfo != nil {
+		if configInfo.Address != "" {
+			config.Address = configInfo.Address
+		}
+
+		if configInfo.Scheme != "" {
+			config.Scheme = configInfo.Scheme
+		}
+
+		if configInfo.Datacenter != "" {
+			config.Datacenter = configInfo.Datacenter
+		}
+	}
+
+	return NewStore(config)
 }
