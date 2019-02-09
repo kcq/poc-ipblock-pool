@@ -23,16 +23,20 @@ const (
 	defaultPoolBlockSize = 4
 )
 
+// Pool errors
 var (
+	//
 	ErrBlockNotFound = errors.New("Block not found")
 )
 
+// StoreConfig contains the Pool Store configurations
 type StoreConfig struct {
 	Address    string
 	Scheme     string
 	Datacenter string
 }
 
+// Config contains the Pool (Manager) configurations
 type Config struct {
 	StartRange    string
 	EndRange      string
@@ -40,14 +44,16 @@ type Config struct {
 	Store         *StoreConfig
 }
 
-type PoolInfo struct {
+// Info contains the Pool metadata persisted in the Pool Store
+type Info struct {
 	Start string `json:"start"`
 	End   string `json:"end"`
 	Next  string `json:"next"`
 }
 
-func NewPoolInfo(start, end, next string) *PoolInfo {
-	info := PoolInfo{
+// NewPoolInfo creates a new Pool Info object
+func NewPoolInfo(start, end, next string) *Info {
+	info := Info{
 		Start: start,
 		End:   end,
 		Next:  next,
@@ -56,12 +62,14 @@ func NewPoolInfo(start, end, next string) *PoolInfo {
 	return &info
 }
 
+// BlockInfo contains the IP Block metadata persisted in the Pool Store
 type BlockInfo struct {
 	ID    string `json:"id"`
 	Start string `json:"start"`
 	Key   string `json:"key"`
 }
 
+// NewBlockInfo creates a new IP Block Info object
 func NewBlockInfo(start, key string) *BlockInfo {
 	id, err := ksuid.NewRandom()
 	if err != nil {
@@ -77,9 +85,10 @@ func NewBlockInfo(start, key string) *BlockInfo {
 	return &info
 }
 
+// Manager is responsible for managing the IP Block Pool
 type Manager struct {
 	store         *Store
-	info          *PoolInfo
+	info          *Info
 	startIP       net.IP
 	endIP         net.IP
 	nextBlock     net.IP
@@ -88,6 +97,7 @@ type Manager struct {
 	endRange      string
 }
 
+// New creates a new Pool Manager object
 func New(configInfo *Config, store *Store) *Manager {
 	if store == nil && configInfo != nil && configInfo.Store != nil {
 		store = NewStoreWithConfig(configInfo.Store)
@@ -141,7 +151,7 @@ func (pool *Manager) init() {
 	pool.info = pool.store.GetPool()
 
 	if pool.info == nil {
-		fmt.Println("PoolInfo - not initialized yet...")
+		fmt.Println("Pool Info - not initialized yet...")
 
 		pool.info = NewPoolInfo(pool.startRange, pool.endRange, pool.startRange)
 		pool.store.SavePool(pool.info)
@@ -151,7 +161,7 @@ func (pool *Manager) init() {
 		pool.nextBlock = pool.startIP
 
 	} else {
-		fmt.Printf("PoolInfo - restored => %#v\n", pool.info)
+		fmt.Printf("Pool Info - restored => %#v\n", pool.info)
 		pool.startIP = net.ParseIP(pool.info.Start)
 		pool.endIP = net.ParseIP(pool.info.End)
 		pool.nextBlock = net.ParseIP(pool.info.Next)
@@ -180,6 +190,8 @@ func (pool *Manager) nextBlockFromRange() string {
 	return allocated
 }
 
+// Lookup returns the IP Block metadata by the IP Block start address 
+// or the Block Key or nil if the IP Block is not allocated yet
 func (pool *Manager) Lookup(ipBlock, blockKey string) *BlockInfo {
 	if ipBlock != "" {
 		return pool.store.GetBlock(ipBlock)
@@ -190,6 +202,8 @@ func (pool *Manager) Lookup(ipBlock, blockKey string) *BlockInfo {
 	return nil
 }
 
+// Allocate returns the newly allocated IP Block or an existing IP Block
+// if the provided Block Key matches an existing IP Block allocation
 func (pool *Manager) Allocate(blockKey string, delayUnlock bool) *BlockInfo {
 	fmt.Println("Pool.Allocate - Trying to get the pool lock...")
 
@@ -234,6 +248,8 @@ func (pool *Manager) Allocate(blockKey string, delayUnlock bool) *BlockInfo {
 	return blockInfo
 }
 
+// Free releases the selected IP Block allocation 
+// based on the provided IP Block starting address or its Block Key
 func (pool *Manager) Free(ipBlock, blockKey string) error {
 	fmt.Println("Pool.Free - Trying to get the pool lock...")
 	lock := pool.store.GetLock()
@@ -265,11 +281,14 @@ func (pool *Manager) Free(ipBlock, blockKey string) error {
 	return ErrBlockNotFound
 }
 
+// Store represents the Pool data store (Consul is used as the store backend)
 type Store struct {
 	consul *api.Client
 	kvAPI  *api.KV
 }
 
+// GetLock returns the data store lock object
+// You must explicitly acquired/lock the lock object to ensure exclusive access to the Store
 func (s *Store) GetLock() *api.Lock {
 	lock, err := s.consul.LockKey(poolLockKey)
 	if err != nil {
@@ -279,6 +298,7 @@ func (s *Store) GetLock() *api.Lock {
 	return lock
 }
 
+// GetRecord returns the selected record
 func (s *Store) GetRecord(key string) []byte {
 	pair, _, err := s.kvAPI.Get(key, nil)
 	if err != nil {
@@ -292,6 +312,7 @@ func (s *Store) GetRecord(key string) []byte {
 	return pair.Value
 }
 
+// SaveRecord saves the provided record in the Store
 func (s *Store) SaveRecord(key string, data []byte) {
 	pair := &api.KVPair{Key: key, Value: data}
 	if _, err := s.kvAPI.Put(pair, nil); err != nil {
@@ -299,12 +320,14 @@ func (s *Store) SaveRecord(key string, data []byte) {
 	}
 }
 
+// RemoveRecord removes the selected record from the Store
 func (s *Store) RemoveRecord(key string) {
 	if _, err := s.kvAPI.Delete(key, nil); err != nil {
 		panic(err)
 	}
 }
 
+// FindBlock returns the BlockInfo object selected by IP Block Key
 func (s *Store) FindBlock(key string) *BlockInfo {
 	//NOTE: this is a hacky way to find the record by key (good enough for a PoC :-))
 	if pairs, _, err := s.kvAPI.List(poolBlocksKeyPrefix, nil); err != nil {
@@ -332,6 +355,7 @@ func (s *Store) FindBlock(key string) *BlockInfo {
 	return nil
 }
 
+// GetBlock returns the BlockInfo object selected by the IP Block starting address
 func (s *Store) GetBlock(blockStart string) *BlockInfo {
 	key := fmt.Sprintf("%s/%s", poolBlocksKeyPrefix, blockStart)
 	raw := s.GetRecord(key)
@@ -347,6 +371,7 @@ func (s *Store) GetBlock(blockStart string) *BlockInfo {
 	return &block
 }
 
+// SaveBlock saves the provided BlockInfo object
 func (s *Store) SaveBlock(block *BlockInfo) {
 	key := fmt.Sprintf("%s/%s", poolBlocksKeyPrefix, block.Start)
 
@@ -360,12 +385,14 @@ func (s *Store) SaveBlock(block *BlockInfo) {
 	s.SaveRecord(key, buf.Bytes())
 }
 
+// RemoveBlock removes the BlockInfo object selected by the IP Block starting address
 func (s *Store) RemoveBlock(blockStart string) {
 	key := fmt.Sprintf("%s/%s", poolBlocksKeyPrefix, blockStart)
 	s.RemoveRecord(key)
 }
 
-func (s *Store) SavePool(pool *PoolInfo) {
+// SavePool saves the Pool metadata
+func (s *Store) SavePool(pool *Info) {
 	buf := &bytes.Buffer{}
 	enc := json.NewEncoder(buf)
 	enc.SetEscapeHTML(false)
@@ -376,13 +403,14 @@ func (s *Store) SavePool(pool *PoolInfo) {
 	s.SaveRecord(poolInfoKey, buf.Bytes())
 }
 
-func (s *Store) GetPool() *PoolInfo {
+// GetPool restores the Pool metadata from the Store backend
+func (s *Store) GetPool() *Info {
 	raw := s.GetRecord(poolInfoKey)
 	if raw == nil {
 		return nil
 	}
 
-	var pool PoolInfo
+	var pool Info
 	if err := json.Unmarshal(raw, &pool); err != nil {
 		panic(err)
 	}
@@ -390,6 +418,7 @@ func (s *Store) GetPool() *PoolInfo {
 	return &pool
 }
 
+// NewStore creates a new Store object based on the provided backend config
 func NewStore(config *api.Config) *Store {
 	fmt.Println("pool.NewStore...")
 	if config == nil {
@@ -410,6 +439,7 @@ func NewStore(config *api.Config) *Store {
 	return &store
 }
 
+// NewStoreWithConfig creates a new Store object based on the provided Store config
 func NewStoreWithConfig(configInfo *StoreConfig) *Store {
 	config := api.DefaultConfig()
 

@@ -7,7 +7,7 @@ BDIR="$( cd -P "$( dirname "$SOURCE" )/.." && pwd )"
 
 echo "Setting up env..."
 
-if [ -z "${GOPATH}"]; then
+if [ -z "${GOPATH}" ]; then
 	echo "GOPATH: Not set yet"
 	if [ -d $BDIR/_gopath ]; then
 		echo "GOPATH: Using local _gopath dir..."

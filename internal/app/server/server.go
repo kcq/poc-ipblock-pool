@@ -20,11 +20,13 @@ const (
 	pathPoolAllocation = "/pool/allocation"
 )
 
+// App represents the server app
 type App struct {
 	pm     *pool.Manager
 	router *chi.Mux
 }
 
+// New creates a new server app
 func New(pmanager *pool.Manager) *App {
 	app := &App{
 		pm: pmanager,
@@ -108,6 +110,7 @@ func (a *App) init() {
 	})
 }
 
+// Run starts the HTTP server app execution
 func (a *App) Run() {
 	if err := http.ListenAndServe(serverAddr, a.router); err != nil {
 		panic(err)

@@ -15,11 +15,13 @@ const (
 	flagKey   = "key"
 )
 
+// App represents the cli app
 type App struct {
 	pm  *pool.Manager
 	cli *ucli.App
 }
 
+// New creates a new cli app
 func New(pmanager *pool.Manager) *App {
 	app := &App{
 		pm:  pmanager,
@@ -114,6 +116,7 @@ func (a *App) init() {
 	}
 }
 
+// Run starts the cli app execution
 func (a *App) Run(args []string) {
 	a.cli.Run(args)
 }
